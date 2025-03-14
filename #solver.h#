@@ -1,0 +1,243 @@
+#ifndef SOLVER_H
+#define SOLVER_H
+#include <unordered_map>
+#include "particle.h"
+#include <vector>
+#include <cmath>
+
+
+
+class Solver
+{
+public:
+    Solver() = default;
+
+     Particle& addObject(sf::Vector2f position, float r)
+    {
+        objects.emplace_back(position, r); 
+        return objects.back(); 
+    }
+    
+
+     std::vector<Particle>& get_objects() 
+    {
+    return objects;
+    }
+
+    void update()
+    {
+        float dt = step_dt / substep;
+        
+        for(int i = 0; i < substep; i++)
+        {
+            apply_gravity();
+            update_objects(dt);
+            collisionDetection();
+            apply_boundary();
+        }
+    }
+
+    void set_boundary(sf::Vector2f window)
+    {
+        boundary_min = {0.0f, 0.0f};
+        boundary_max = window;
+    }
+    
+    sf::Vector2f getBoundary() const
+    {
+        return boundary_max; 
+    }
+   
+    void mouse_pull(sf::Vector2f pos)
+    {
+        for(Particle &obj : objects)
+        {
+            sf::Vector2f dir = pos - obj.position;
+            float dist = sqrt(dir.x * dir.x + dir.y * dir.y);
+            obj.accelerate(dir*std::max(0.0f, 10 * (120 - dist)));
+        }
+    }
+
+    void mouse_push(sf::Vector2f pos)
+    {
+        for (Particle &obj : objects)
+        {
+            sf::Vector2f dir = obj.position - pos; 
+            float dist = sqrt(dir.x * dir.x + dir.y * dir.y);
+            obj.accelerate(dir * std::max(-10 * (120 - dist), 0.0f));
+        }
+    }
+    
+    void setObjectVelocity(Particle& object, sf::Vector2f v)
+    {
+        object.set_velocity(v, getStepDt());
+    }
+    float getStepDt() const
+    {
+        return step_dt;
+    }
+
+    
+
+    
+private:
+    std::vector<Particle> objects;
+    sf::Vector2f gravity = {0.0f, 500.0f};
+
+    sf::Vector2f boundary_min;
+    sf::Vector2f boundary_max = {0.0f, 840.0f};
+
+    int substep = 8;
+
+    //std::unordered_map<int, std::vector <Particle*>> grid;
+    // float cell_size = 20.0f;
+    
+    
+    float step_dt = 1.0f/ 60.0;
+
+    
+    void apply_gravity()
+    {
+        for(auto &obj : objects)
+        {
+            obj.accelerate(gravity);
+        }
+    }
+
+    
+    
+    void apply_boundary()
+    {
+        for (auto &obj : objects)
+        {
+            sf::Vector2f velocity = obj.get_velocity();
+            
+
+            if (obj.position.x - obj.radius < boundary_min.x)
+            {
+                obj.position.x = boundary_min.x + obj.radius;
+                obj.set_velocity({-velocity.x, velocity.y}, 1.0f);
+            }
+
+            if (obj.position.x + obj.radius > boundary_max.x)
+            {
+                obj.position.x = boundary_max.x - obj.radius;
+                obj.set_velocity({-velocity.x, velocity.y}, 1.0f);
+            }
+
+            if (obj.position.y - obj.radius < boundary_min.y)
+            {
+                obj.position.y = boundary_min.y + obj.radius;
+                obj.set_velocity({velocity.x, -velocity.y}, 1.0f); 
+            }
+
+            if (obj.position.y + obj.radius > boundary_max.y)
+            {
+                obj.position.y = boundary_max.y - obj.radius;
+                obj.set_velocity({velocity.x, -velocity.y}, 1.0f);
+            }
+            
+        }
+    }
+
+    void update_objects(float dt)
+    {
+        float damping = 0.98f;        
+        
+        for (auto &obj : objects)
+        {
+            sf::Vector2f velocity = (obj.position - obj.last_position) * damping; //  Use obj.position
+            obj.last_position = obj.position;
+            obj.position += velocity + obj.acceleration * (dt * dt); //  Use obj.acceleration
+            obj.acceleration = {}; //  Reset acceleration
+        }  
+    }
+
+    void collisionDetection()
+{
+    const int num_objects = objects.size();
+    const float restitution = 0.8f;  // Bounciness factor (0-1)
+    const float epsilon = 0.0001f;   // Small value to avoid division by zero
+    const float positionCorrectionFactor = 0.8f; // Stronger position correction
+    
+    for (int i = 0; i < num_objects; i++)
+    {
+        Particle &obj_1 = objects[i];
+        
+        for (int j = i + 1; j < num_objects; j++)
+        {
+            Particle &obj_2 = objects[j];
+            
+            // Calculate vector between centers
+            sf::Vector2f delta = obj_1.position - obj_2.position;
+            
+            // Calculate squared distance (faster than using sqrt)
+            float distSquared = delta.x * delta.x + delta.y * delta.y;
+            float minDistSquared = (obj_1.radius + obj_2.radius) * (obj_1.radius + obj_2.radius);
+            
+            // Check if objects are colliding
+            if (distSquared < minDistSquared && distSquared > epsilon)
+            {
+                // Calculate actual distance
+                float dist = std::sqrt(distSquared);
+                
+                // Calculate normal vector (direction of collision)
+                sf::Vector2f normal = delta / dist;
+                
+                // Calculate mass (based on radius^2)
+                float mass1 = obj_1.radius * obj_1.radius;
+                float mass2 = obj_2.radius * obj_2.radius;
+                float totalMass = mass1 + mass2;
+                
+                // Calculate mass ratios
+                float ratio1 = mass2 / totalMass; // Note: These are flipped intentionally
+                float ratio2 = mass1 / totalMass; // to push the heavier object less
+                
+                // Calculate penetration depth
+                float penetration = (obj_1.radius + obj_2.radius - dist);
+                
+                // Resolve position overlap (prevent sinking) - stronger correction
+                obj_1.position += normal * (penetration * ratio1 * positionCorrectionFactor);
+                obj_2.position -= normal * (penetration * ratio2 * positionCorrectionFactor);
+                
+                // Get current velocities directly
+                sf::Vector2f vel1 = obj_1.get_velocity();
+                sf::Vector2f vel2 = obj_2.get_velocity();
+                
+                // Calculate relative velocity
+                sf::Vector2f relVel = vel1 - vel2;
+                
+                // Calculate velocity along normal
+                float velAlongNormal = relVel.x * normal.x + relVel.y * normal.y;
+                
+                // Only resolve if objects are moving toward each other
+                if (velAlongNormal < 0)
+                {
+                    // Calculate impulse scalar
+                    float j = -(1.0f + restitution) * velAlongNormal;
+                    j /= ratio1 + ratio2;
+                    
+                    // Apply impulse
+                    sf::Vector2f impulse = normal * j;
+                    
+                    // Update velocities directly with set_velocity
+                    sf::Vector2f newVel1 = vel1 + impulse * ratio1;
+                    sf::Vector2f newVel2 = vel2 - impulse * ratio2;
+                    
+                    obj_1.set_velocity(newVel1, 1.0f);
+                    obj_2.set_velocity(newVel2, 1.0f);
+                }
+                else
+                {
+                    // Even if not moving toward each other, still apply some separation
+                    // This helps with stacking and resting contact
+                    sf::Vector2f separationImpulse = normal * 0.01f; // Small separation impulse
+                    obj_1.set_velocity(vel1 + separationImpulse, 1.0f);
+                    obj_2.set_velocity(vel2 - separationImpulse, 1.0f);
+                }
+            }
+        }
+    }
+}
+};
+#endif // SOLVER_H
