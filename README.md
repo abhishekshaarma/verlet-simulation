@@ -14,10 +14,9 @@ Exit simulation	Escape Key
 ### Configuration
 Modify Solver.h to change physics behavior:
 
-cpp
-Copy
-Edit
 sf::Vector2f gravity = {0.0f, 500.0f}; // Gravity strength
+
 int substep = 1; // Stability vs. performance
+
 float damping = 0.50f; // Energy loss over time
 
