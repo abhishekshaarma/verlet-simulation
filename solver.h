@@ -32,7 +32,7 @@ public:
         {
             apply_gravity();
             update_objects(dt);
-            collisionDetection();
+//            collisionDetection();
             apply_boundary();
         }
     }
@@ -142,7 +142,7 @@ private:
 
     void update_objects(float dt)
     {
-        float damping = 0.50f; // Energy loss factor (closer to 1 = slow decay)
+        float damping = 0.98f; // Energy loss factor (closer to 1 = slow decay)
         
         
         for (auto &obj : objects)
@@ -154,8 +154,7 @@ private:
         }  
     }
 
-    void collisionDetection()
-    {}
+    
 
    
     
